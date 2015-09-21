@@ -11,15 +11,15 @@ package telegram.types;
  */
 public class Location extends TelegramBaseClass {
 
-    private float longitude = 0.0f;
-    private float latitude = 0.0f;
+    private double longitude = 0.0f;
+    private double latitude = 0.0f;
 
     /**
      * Get the value of longitude
      *
      * @return the value of longitude
      */
-    public float getLongitude() {
+    public double getLongitude() {
         return longitude;
     }
 
@@ -28,11 +28,11 @@ public class Location extends TelegramBaseClass {
      *
      * @return the value of latitude
      */
-    public float getLatitude() {
+    public double getLatitude() {
         return latitude;
     }
 
-    public void setLongitude(float longitude) {
+    public void setLongitude(double longitude) {
         this.longitude = longitude;
     }
 
@@ -40,7 +40,7 @@ public class Location extends TelegramBaseClass {
         setLongitude(0.0f);
     }
 
-    public void setLatitude(float latitude) {
+    public void setLatitude(double latitude) {
         this.latitude = latitude;
     }
 

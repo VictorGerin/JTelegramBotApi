@@ -630,11 +630,11 @@ public class BotApi {
      * @see https://core.telegram.org/bots/api#sendlocation
      * @throws TelegramBaseException
      */
-    public Message sendLocation(int chat_id, float latitude, float longitude, Param... params) throws TelegramBaseException {
+    public Message sendLocation(int chat_id, double latitude, double longitude, Param... params) throws TelegramBaseException {
         params = addParamsToArray(params,
                 new Param("chat_id", Integer.toString(chat_id)),
-                new Param("longitude", Float.toString(longitude)),
-                new Param("latitude", Float.toString(latitude))
+                new Param("longitude", Double.toString(longitude)),
+                new Param("latitude", Double.toString(latitude))
         );
         JSONObject execute = (JSONObject) execute(sendLocation, params);
         return ResponseParser.objectParser(Message.class, execute);

@@ -22,6 +22,9 @@ public class Param {
     public static Param get(String name, String value) {
         return new Param(name, value);
     }
+    public static Param get(String name, telegram.types.TelegramBaseClass value) {
+        return new Param(name, telegram.types.ResponseParser.objectToJSON(value).toString());
+    }
 
     public String getName() {
         return name;
