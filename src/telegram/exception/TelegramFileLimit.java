@@ -31,7 +31,7 @@ public class TelegramFileLimit extends TelegramBaseException {
         long total = calcTotalSizeToSent(adicionalFile, fileToUpload, fileType, params);
         if (total > maxSendSize) {
             long muiltpart_form_size = total - fileToUpload.length;
-            throw new TelegramBaseException("The max data that can be sent to server is ("
+            throw new TelegramFileLimit("The max data that can be sent to server is ("
                     + maxSendSize
                     + ") that include all muiltpart-form in this case takes (" + muiltpart_form_size
                     + ") so the file size can be only (" + (50 * 1024 * 1024 - muiltpart_form_size) + ")");

@@ -789,14 +789,22 @@ public class BotApi {
     }
 
     private JSONObject readAndGetJSONObj(InputStream in) {
-        String collect = new BufferedReader(new InputStreamReader(in)).lines().collect(Collectors.joining("\n"));
+        try {
+            InputStreamReader reader = new InputStreamReader(in, "UTF-8");
+            if (reader.ready()) {
+                String collect = new BufferedReader(reader).lines().collect(Collectors.joining("\n"));
 
-        if (!collect.isEmpty()) {
-            return new JSONObject(collect);
-        } else {
-            return new JSONObject();
+                if (!collect.isEmpty()) {
+                    return new JSONObject(collect);
+                } else {
+                    return new JSONObject("{\"ok\":false, description:\"The telegram don't return any response\"}");
+                }
+            } else {
+                return new JSONObject("{\"ok\":false, description:\"The telegram don't return any response\"}");
+            }
+        } catch (IOException ex) {
+            throw new TelegramBaseException(ex.getMessage(), ex);
         }
-
     }
 
     private String getFileExtension(File f) {
@@ -896,7 +904,7 @@ public class BotApi {
             if (saida.getBoolean("ok")) {
                 return saida.get("result");
             } else {
-                throw new TelegramErroResponse(saida.optInt("error_code"), saida.getString("description"));
+                throw new TelegramErroResponse(con.getResponseCode(), saida.getString("description"));
             }
 
         } catch (IOException ex) {
