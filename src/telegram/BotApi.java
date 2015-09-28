@@ -16,7 +16,10 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -32,6 +35,8 @@ import telegram.types.ResponseParser;
 import telegram.types.Update;
 import telegram.types.User;
 import telegram.types.UserProfilePhotos;
+import telegram.util.BotUtils;
+import telegram.util.Questions;
 
 /**
  *
@@ -40,8 +45,10 @@ import telegram.types.UserProfilePhotos;
  */
 public class BotApi {
 
-    private final String baseUrl = "https://api.telegram.org/bot<token>/<metodo>";
-    private final String fileUrl = "https://api.telegram.org/file/bot<token>/<file_path>";
+    private final String baseUrl;
+    private final String fileUrl;
+
+    private final List<Predicate<Update>> redirects = new LinkedList();
 
     public static byte[] MULTIPART_BOUNDARY;
     public static byte[] MULTIPART_CARRIAGE_RETURN_AND_NEWLINE;
@@ -49,8 +56,6 @@ public class BotApi {
     public static byte[] Content_Transfer_Encoding_base64;
     public static String Content_Disposition_file;
     public static String Content_Disposition;
-
-    private final String token;
 
     public static enum TypeAction {
 
@@ -104,12 +109,23 @@ public class BotApi {
     public static final Metodo sendLocation = new Metodo("sendLocation");
     public static final Metodo sendChatAction = new Metodo("sendChatAction");
 
+    public void addRedirect(Predicate<Update> update) {
+        redirects.add(update);
+    }
+
+    public void removeRedirect(Predicate<Update> update) {
+        redirects.remove(update);
+    }
+
     /**
      * Create a new bot that will work with the given token
      *
      * @param token Token that was given by Telegram
      */
     public BotApi(String token) {
+        this.fileUrl = "https://api.telegram.org/file/bot<token>/<file_path>".replace("<token>", token);
+        this.baseUrl = "https://api.telegram.org/bot<token>/<metodo>".replace("<token>", token);
+
         try {
             BotApi.Content_Disposition = "Content-Disposition: form-data; name=\"<name>\"";
             BotApi.Content_Disposition_file = "Content-Disposition: form-data; name=\"<fieldName>\"; filename=\"<name>\"";
@@ -120,7 +136,6 @@ public class BotApi {
         } catch (UnsupportedEncodingException ex) {
             Logger.getLogger(BotApi.class.getName()).log(Level.SEVERE, null, ex);
         }
-        this.token = token;
     }
 
     /**
@@ -143,7 +158,26 @@ public class BotApi {
      */
     public List<Update> getUpdates(Param... params) throws TelegramBaseException {
         JSONArray execute = (JSONArray) execute(getUpdates, params);
-        return ResponseParser.arrayParser(Update.class, execute);
+        List<Update> updates = ResponseParser.arrayParser(Update.class, execute);
+
+        if (updates.size() > 0 && redirects.size() > 0) {
+            int maxIdRemoved = 0;
+            for (Update update : new LinkedList<>(updates)) {
+                for (Predicate<Update> redirect : redirects) {
+                    if (redirect.test(update)) {
+                        if (update.getUpdate_id() > maxIdRemoved) {
+                            maxIdRemoved = update.getUpdate_id();
+                        }
+                        updates.remove(update);
+                    }
+                }
+            }
+            if (maxIdRemoved != 0) {
+                updates.addAll(getUpdates(Param.get("offset", maxIdRemoved + 1)));
+            }
+        }
+
+        return updates;
     }
 
     /**
@@ -157,7 +191,7 @@ public class BotApi {
      * @throws TelegramBaseException
      */
     public Message sendMessage(int chat_id, String text, Param... params) throws TelegramBaseException {
-        params = addParamsToArray(params, new Param("chat_id", Integer.toString(chat_id)), new Param("text", text));
+        params = addParamsToArray(params, Param.get("chat_id", chat_id), Param.get("text", text));
         JSONObject execute = (JSONObject) execute(sendMessage, params);
         return ResponseParser.objectParser(Message.class, execute);
     }
@@ -174,9 +208,9 @@ public class BotApi {
      */
     public Message forwardMessage(int chat_id, int from_chat_id, int message_id) throws TelegramBaseException {
         JSONObject execute = (JSONObject) execute(forwardMessage,
-                new Param("chat_id", Integer.toString(chat_id)),
-                new Param("from_chat_id", Integer.toString(from_chat_id)),
-                new Param("message_id", Integer.toString(message_id))
+                Param.get("chat_id", chat_id),
+                Param.get("from_chat_id", from_chat_id),
+                Param.get("message_id", message_id)
         );
         return ResponseParser.objectParser(Message.class, execute);
     }
@@ -228,7 +262,7 @@ public class BotApi {
      */
     public Message sendPhoto(int chat_id, byte[] InputFile, String type, Param... params) throws TelegramBaseException {
         params = addParamsToArray(params,
-                Param.get("chat_id", Integer.toString(chat_id))
+                Param.get("chat_id", chat_id)
         );
         JSONObject execute = (JSONObject) execute(sendPhoto, InputFile, type, params);
         return ResponseParser.objectParser(Message.class, execute);
@@ -246,7 +280,7 @@ public class BotApi {
      */
     public Message sendPhoto(int chat_id, String photoId, Param... params) throws TelegramBaseException {
         params = addParamsToArray(params,
-                Param.get("chat_id", Integer.toString(chat_id)),
+                Param.get("chat_id", chat_id),
                 Param.get(sendPhoto.adicionalField, photoId)
         );
         JSONObject execute = (JSONObject) execute(sendPhoto, params);
@@ -300,7 +334,7 @@ public class BotApi {
      * @throws TelegramBaseException
      */
     public Message sendAudio(int chat_id, byte[] InputFile, Param... params) throws TelegramBaseException {
-        params = addParamsToArray(params, new Param("chat_id", Integer.toString(chat_id)));
+        params = addParamsToArray(params, Param.get("chat_id", chat_id));
 
         TelegramFileLimit.check(sendAudio.adicionalField, InputFile, "mp3", params);
 
@@ -320,7 +354,7 @@ public class BotApi {
      */
     public Message sendAudio(int chat_id, String audioId, Param... params) throws TelegramBaseException {
         params = addParamsToArray(params,
-                Param.get("chat_id", Integer.toString(chat_id)),
+                Param.get("chat_id", chat_id),
                 Param.get(sendAudio.adicionalField, audioId)
         );
         JSONObject execute = (JSONObject) execute(sendAudio, params);
@@ -373,7 +407,7 @@ public class BotApi {
      * @throws TelegramBaseException
      */
     public Message sendDocument(int chat_id, byte[] InputFile, String type, Param... params) throws TelegramBaseException {
-        params = addParamsToArray(params, Param.get("chat_id", Integer.toString(chat_id)));
+        params = addParamsToArray(params, Param.get("chat_id", chat_id));
 
         TelegramFileLimit.check(sendDocument.adicionalField, InputFile, type, params);
 
@@ -393,7 +427,7 @@ public class BotApi {
      */
     public Message sendDocument(int chat_id, String docId, Param... params) throws TelegramBaseException {
         params = addParamsToArray(params,
-                new Param("chat_id", Integer.toString(chat_id)),
+                Param.get("chat_id", chat_id),
                 Param.get(sendDocument.adicionalField, docId)
         );
         JSONObject execute = (JSONObject) execute(sendDocument, params);
@@ -446,7 +480,7 @@ public class BotApi {
      * @throws TelegramBaseException
      */
     public Message sendSticker(int chat_id, byte[] InputFile, String type, Param... params) throws TelegramBaseException {
-        params = addParamsToArray(params, new Param("chat_id", Integer.toString(chat_id)));
+        params = addParamsToArray(params, Param.get("chat_id", chat_id));
 
         JSONObject execute = (JSONObject) execute(sendSticker, InputFile, type, params);
         return ResponseParser.objectParser(Message.class, execute);
@@ -464,7 +498,7 @@ public class BotApi {
      */
     public Message sendSticker(int chat_id, String stickerId, Param... params) throws TelegramBaseException {
         params = addParamsToArray(params,
-                new Param("chat_id", Integer.toString(chat_id)),
+                Param.get("chat_id", chat_id),
                 Param.get(sendSticker.adicionalField, stickerId)
         );
         JSONObject execute = (JSONObject) execute(sendSticker, params);
@@ -518,7 +552,7 @@ public class BotApi {
      * @throws TelegramBaseException
      */
     public Message sendVideo(int chat_id, byte[] InputFile, Param... params) throws TelegramBaseException {
-        params = addParamsToArray(params, new Param("chat_id", Integer.toString(chat_id)));
+        params = addParamsToArray(params, Param.get("chat_id", chat_id));
 
         TelegramFileLimit.check(sendVideo.adicionalField, InputFile, "mp4", params);
 
@@ -539,7 +573,7 @@ public class BotApi {
      */
     public Message sendVideo(int chat_id, String videoId, Param... params) throws TelegramBaseException {
         params = addParamsToArray(params,
-                new Param("chat_id", Integer.toString(chat_id)),
+                Param.get("chat_id", chat_id),
                 Param.get(sendVideo.adicionalField, videoId)
         );
         JSONObject execute = (JSONObject) execute(sendVideo, params);
@@ -592,7 +626,7 @@ public class BotApi {
      * @throws TelegramBaseException
      */
     public Message sendVoice(int chat_id, byte[] InputFile, String type, Param... params) throws TelegramBaseException {
-        params = addParamsToArray(params, new Param("chat_id", Integer.toString(chat_id)));
+        params = addParamsToArray(params, Param.get("chat_id", chat_id));
 
         TelegramFileLimit.check(sendVoice.adicionalField, InputFile, type, params);
 
@@ -612,7 +646,7 @@ public class BotApi {
      */
     public Message sendVoice(int chat_id, String audioId, Param... params) throws TelegramBaseException {
         params = addParamsToArray(params,
-                new Param("chat_id", Integer.toString(chat_id)),
+                Param.get("chat_id", chat_id),
                 Param.get(sendVoice.adicionalField, audioId)
         );
         JSONObject execute = (JSONObject) execute(sendVoice, params);
@@ -632,9 +666,9 @@ public class BotApi {
      */
     public Message sendLocation(int chat_id, double latitude, double longitude, Param... params) throws TelegramBaseException {
         params = addParamsToArray(params,
-                new Param("chat_id", Integer.toString(chat_id)),
-                new Param("longitude", Double.toString(longitude)),
-                new Param("latitude", Double.toString(latitude))
+                Param.get("chat_id", chat_id),
+                Param.get("longitude", longitude),
+                Param.get("latitude", latitude)
         );
         JSONObject execute = (JSONObject) execute(sendLocation, params);
         return ResponseParser.objectParser(Message.class, execute);
@@ -651,8 +685,8 @@ public class BotApi {
      */
     public boolean sendChatAction(int chat_id, TypeAction action) throws TelegramBaseException {
         Param[] params = new Param[2];
-        params[0] = new Param("chat_id", Integer.toString(chat_id));
-        params[1] = new Param("action", action.name());
+        params[0] = Param.get("chat_id", chat_id);
+        params[1] = Param.get("action", action);
         return (boolean) execute(sendChatAction, params);
     }
 
@@ -666,7 +700,7 @@ public class BotApi {
      * @throws TelegramBaseException
      */
     public UserProfilePhotos getUserProfilePhotos(int user_id, Param... params) throws TelegramBaseException {
-        params = addParamsToArray(params, new Param("user_id", Integer.toString(user_id)));
+        params = addParamsToArray(params, Param.get("user_id", user_id));
         JSONObject execute = (JSONObject) execute(getUserProfilePhotos, params);
         return ResponseParser.objectParser(UserProfilePhotos.class, execute);
     }
@@ -695,7 +729,7 @@ public class BotApi {
      * @throws IOException
      */
     public InputStream getInputStreamFile(telegram.types.File file) throws IOException {
-        String url = fileUrl.replace("<token>", token).replace("<file_path>", file.getFile_path());
+        String url = fileUrl.replace("<file_path>", file.getFile_path());
         try {
             return new URL(url).openStream();
         } catch (MalformedURLException ex) {
@@ -767,8 +801,20 @@ public class BotApi {
      * and optional
      * @return The max file size that can be sent
      */
-    public long calcTheMaxFileSizeToBeSent(Metodo metodo, String fileType, Param... params) {
-        return TelegramFileLimit.maxSendSize - TelegramFileLimit.calcTotalSizeToSent(metodo.adicionalField, new byte[]{}, fileType, params);
+    public int calcTheMaxFileSizeToBeSent(Metodo metodo, String fileType, Param... params) {
+        return (int) (TelegramFileLimit.maxSendSize - TelegramFileLimit.calcTotalSizeToSent(metodo.adicionalField, new byte[]{}, fileType, params));
+    }
+
+    public Questions createQuestions() {
+        return new Questions(this);
+    }
+
+    public void startLoop(Consumer<Update> run) {
+        BotUtils.UpdaterSynchronous(this, run);
+    }
+
+    public void startLoop(Consumer<Update> run, boolean useTelegramOffset) {
+        BotUtils.UpdaterSynchronous(this, run, useTelegramOffset);
     }
 
     private Param[] addParamsToArray(Param[] original, Param... paramsToAdd) {
@@ -829,7 +875,6 @@ public class BotApi {
             name = new String(Base64.getEncoder().encode(digest), "UTF-8");
         } catch (NoSuchAlgorithmException ex) {
             name = "hue";
-            Logger.getLogger(BotApi.class.getName()).log(Level.SEVERE, null, ex);
         }
 
         name += "." + fileType;
@@ -840,8 +885,8 @@ public class BotApi {
                 .getBytes("UTF-8"));
         out.write(MULTIPART_CARRIAGE_RETURN_AND_NEWLINE);
         out.write(MULTIPART_CARRIAGE_RETURN_AND_NEWLINE);
-        if (out.equals(System.out)) {
-            out.write("Content".getBytes());
+        if (out.equals(System.out) || out.equals(System.err)) {
+            out.write(("Content of file " + fileToUpload.length + " bytes").getBytes());
         } else {
             out.write(fileToUpload);
         }
@@ -876,7 +921,7 @@ public class BotApi {
 
     private Object execute(Metodo metodo, byte[] fileToUpload, String fileType, Param... params) throws TelegramBaseException {
         try {
-            String url = baseUrl.replace("<token>", token).replace("<metodo>", metodo.nome);
+            String url = baseUrl.replace("<metodo>", metodo.nome);
             if (metodo.type == Metodo.Type.get) {
                 url += "?" + ParamToString(params);
             }

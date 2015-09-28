@@ -34,7 +34,7 @@ public class TelegramFileLimit extends TelegramBaseException {
             throw new TelegramFileLimit("The max data that can be sent to server is ("
                     + maxSendSize
                     + ") that include all muiltpart-form in this case takes (" + muiltpart_form_size
-                    + ") so the file size can be only (" + (50 * 1024 * 1024 - muiltpart_form_size) + ")");
+                    + ") so the file size can be only (" + (maxSendSize - muiltpart_form_size) + ")");
         }
     }
 
