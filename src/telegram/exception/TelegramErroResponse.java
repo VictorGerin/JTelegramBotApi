@@ -27,9 +27,8 @@ public class TelegramErroResponse extends TelegramBaseException {
         this.erro_code = erro_code;
     }
 
-    @Override
-    public String getMessage() {
-        return "error_code[" + erro_code + "] " + super.getMessage(); //To change body of generated methods, choose Tools | Templates.
+    public int getErro_code() {
+        return erro_code;
     }
 
 }
